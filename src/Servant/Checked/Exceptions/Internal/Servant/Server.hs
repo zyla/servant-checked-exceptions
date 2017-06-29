@@ -24,17 +24,20 @@ Portability :  unknown
 This module exports 'HasServer' instances for 'Throws' and 'Throwing'.
 -}
 
-module Servant.Checked.Exceptions.Internal.Servant.Server where
+module Servant.Checked.Exceptions.Internal.Servant.Server () where
 
 import Data.Proxy (Proxy(Proxy))
+import Control.Monad.Error.Class (throwError)
 import Servant.Server.Internal.Router (Router)
 import Servant.Server.Internal.RoutingApplication (Delayed)
 import Servant
        (Context, Handler, HasServer(..), ServerT, Verb, (:>), (:<|>))
 
-import Servant.Checked.Exceptions.Internal.Envelope (Envelope)
+import Servant.Checked.Exceptions.Internal.Envelope (Envelope(..))
 import Servant.Checked.Exceptions.Internal.Servant.API
        (Throws, Throwing, ThrowingNonterminal)
+import Servant.Checked.Exceptions.Internal.Union (OpenUnion)
+import Servant.Checked.Exceptions.Internal.ToServantErr (ToServantErr, toServantErr)
 
 -- TODO: Make sure to also account for when headers are being used.
 
@@ -54,18 +57,27 @@ instance (HasServer (Throwing '[e] :> api) context) =>
 
 -- | When @'Throwing' es@ comes before a 'Verb', change it into the same 'Verb'
 -- but returning an @'Envelope' es@.
-instance (HasServer (Verb method status ctypes (Envelope es a)) context) =>
+instance
+      ( ToServantErr (OpenUnion es)
+      , HasServer (Verb method status ctypes (a :: *)) context ) =>
     HasServer (Throwing es :> Verb method status ctypes a) context where
 
   type ServerT (Throwing es :> Verb method status ctypes a) m =
     ServerT (Verb method status ctypes (Envelope es a)) m
 
   route
-    :: Proxy (Throwing es :> Verb method status ctypes a)
+    :: forall env.
+       Proxy (Throwing es :> Verb method status ctypes a)
     -> Context context
     -> Delayed env (ServerT (Verb method status ctypes (Envelope es a)) Handler)
     -> Router env
-  route _ = route (Proxy :: Proxy (Verb method status ctypes (Envelope es a)))
+  route _ context subserver =
+    route (Proxy :: Proxy (Verb method status ctypes a)) context
+      (fmap (>>= handleEnvelope) subserver)
+
+handleEnvelope :: ToServantErr (OpenUnion es) => Envelope es a -> Handler a
+handleEnvelope (SuccEnvelope result) = pure result
+handleEnvelope (ErrEnvelope err) = throwError (toServantErr err)
 
 -- | When @'Throwing' es@ comes before ':<|>', push @'Throwing' es@ into each
 -- branch of the API.

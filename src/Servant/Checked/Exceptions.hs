@@ -156,6 +156,10 @@ module Servant.Checked.Exceptions
   , ToProduct
   , tupleToProduct
   , ReturnX
+  -- ***** Serializing errors
+  , ToServantErr
+  , toServantErr
+  , toServantErrJson
   ) where
 
 import Servant.Checked.Exceptions.Internal
