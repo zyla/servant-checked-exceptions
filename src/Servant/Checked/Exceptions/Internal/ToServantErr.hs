@@ -12,12 +12,16 @@ module Servant.Checked.Exceptions.Internal.ToServantErr
   , toServantErrJson
   ) where
 
+import Data.Functor.Identity (Identity, runIdentity)
 import Data.Aeson (ToJSON, encode)
 import Servant.Server (ServantErr(..))
 import Servant.Checked.Exceptions.Internal.Union (Union, union, absurdUnion)
 
 class ToServantErr a where
   toServantErr :: a -> ServantErr
+
+instance ToServantErr a => ToServantErr (Identity a) where
+  toServantErr = toServantErr . runIdentity
 
 instance ToServantErr (Union f '[]) where
   toServantErr = absurdUnion
